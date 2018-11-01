@@ -5,6 +5,7 @@ Created on March 25, 2018
 '''
 import numpy as np
 from sklearn.cluster import KMeans, DBSCAN
+from sklearn.mixture import GaussianMixture
 from sklearn.metrics import pairwise
 
 from spn.algorithms.splitting.Base import split_data_by_clusters, preproc
@@ -40,8 +41,23 @@ def get_split_rows_KMeans(n_clusters=2, pre_proc=None, ohe=False, seed=17):
     return split_rows_KMeans
 
 
+def get_split_rows_GMM(n_clusters=2, pre_proc=None, ohe=False, seed=17, covariance_type='diag', max_iter=100, n_init=3):
+    def split_rows_GMM(local_data, ds_context, scope):
+        data = preproc(local_data, ds_context, pre_proc, ohe)
+
+        clusters = GaussianMixture(n_components=n_clusters,
+                                   covariance_type=covariance_type,
+                                   max_iter=100,
+                                   n_init=n_init,
+                                   random_state=seed).fit_predict(data)
+
+        return split_data_by_clusters(local_data, clusters, scope, rows=True)
+
+    return split_rows_GMM
+
+
 def get_split_rows_TSNE(n_clusters=2, pre_proc=None, ohe=False, seed=17, verbose=10, n_jobs=-1):
-    #https://github.com/DmitryUlyanov/Multicore-TSNE
+    # https://github.com/DmitryUlyanov/Multicore-TSNE
     from MulticoreTSNE import MulticoreTSNE as TSNE
     import os
     ncpus = n_jobs
@@ -50,7 +66,8 @@ def get_split_rows_TSNE(n_clusters=2, pre_proc=None, ohe=False, seed=17, verbose
 
     def split_rows_KMeans(local_data, ds_context, scope):
         data = preproc(local_data, ds_context, pre_proc, ohe)
-        kmeans_data = TSNE(n_components=3, verbose=verbose, n_jobs=ncpus, random_state=seed).fit_transform(data)
+        kmeans_data = TSNE(n_components=3, verbose=verbose, n_jobs=ncpus,
+                           random_state=seed).fit_transform(data)
         clusters = KMeans(n_clusters=n_clusters, random_state=seed).fit_predict(kmeans_data)
 
         return split_data_by_clusters(local_data, clusters, scope, rows=True)
@@ -78,7 +95,8 @@ def get_split_rows_Gower(n_clusters=2, pre_proc=None, seed=17):
 
         try:
             df = robjects.r["as.data.frame"](data)
-            clusters = robjects.r["mixedclustering"](df, ds_context.distribution_family, n_clusters, seed)
+            clusters = robjects.r["mixedclustering"](
+                df, ds_context.distribution_family, n_clusters, seed)
             clusters = np.asarray(clusters)
         except Exception as e:
             np.savetxt("/tmp/errordata.txt", local_data)

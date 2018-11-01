@@ -18,7 +18,7 @@ def count_nonzero(array):
     return len(nonzero_coords)
 
 
-@numba.njit
+# @numba.njit
 def g_test(feature_id_1,
            feature_id_2,
            local_data,
@@ -44,8 +44,8 @@ def g_test(feature_id_1,
     # n_instances = len(instance_ids)
     n_instances = len(local_data)
 
-    feature_size_1 = feature_vals[feature_id_1]
-    feature_size_2 = feature_vals[feature_id_2]
+    feature_size_1 = max(feature_vals[feature_id_1]) + 1
+    feature_size_2 = max(feature_vals[feature_id_2]) + 1
 
     #
     # support vectors for counting the occurrences
@@ -151,7 +151,7 @@ def gtest_greedy_feature_split(local_data,
     return dependent_features.astype(np.int)
 
 
-def get_split_cols_GTest(threshold=0.05, rand_gen=None):
+def get_split_cols_GTest(threshold=5, rand_gen=None):
     def split_cols_GTest(local_data, ds_context, scope):
 
         domains = ds_context.domains
