@@ -132,7 +132,7 @@ def get_binary_data(name, path='spn/data/'):
 add_parametric_inference_support()
 # memory = Memory(cachedir="cache", verbose=0, compress=9)
 
-train, valid, test = load_debd('spn/data/binary', 'nltcs')
+train, valid, test = load_debd('spn/data/binary', 'accidents')
 
 n_features = train.shape[1]
 types = [MetaType.DISCRETE for i in range(n_features)]

@@ -69,6 +69,9 @@ def update_parametric_parameters_mle(node, data):
         for i in range(node.k):
             node.p[i] = np.sum(data == i)
             psum += node.p[i]
+        if np.any(np.isclose(node.p, 0)):
+            for i in range(len(node.p)):
+                node.p[i] += 0.00001 #avoid p=0/1
         node.p = node.p / psum
         node.p = node.p.tolist()
 
