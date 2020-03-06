@@ -25,8 +25,8 @@ from spn.structure.Base import Product, Sum, assign_ids
 import multiprocessing
 import os
 
-cpus = max(1, os.cpu_count() - 2)  # - int(os.getloadavg()[2])
-pool = multiprocessing.Pool(processes=cpus)
+# cpus = max(1, os.cpu_count() - 2)  # - int(os.getloadavg()[2])
+# pool = multiprocessing.Pool(processes=cpus)
 
 
 def get_next_operation_cnet(min_instances_slice=100, min_features_slice=1):

@@ -21,16 +21,16 @@ import numpy as np
 from spn.algorithms.TransformStructure import Prune
 from spn.algorithms.Validity import is_valid
 from spn.structure.Base import Product, Sum, assign_ids
-import multiprocessing
-import os
-
-parallel = True
-
-if parallel:
-    cpus = max(1, os.cpu_count() - 2)  # - int(os.getloadavg()[2])
-else:
-    cpus = 1
-pool = multiprocessing.Pool(processes=cpus)
+# import multiprocessing
+# import os
+#
+# parallel = True
+#
+# if parallel:
+#     cpus = max(1, os.cpu_count() - 2)  # - int(os.getloadavg()[2])
+# else:
+#     cpus = 1
+# pool = multiprocessing.Pool(processes=cpus)
 
 
 class Operation(Enum):
@@ -273,11 +273,11 @@ def learn_structure(
                 child_data_slice = data_slicer(local_data, [col], num_conditional_cols)
                 local_children_params.append((child_data_slice, ds_context, [scope[col]]))
 
-            result_nodes = pool.starmap(create_leaf, local_children_params)
-            # result_nodes = []
-            # for l in tqdm(local_children_params):
-            #    result_nodes.append(create_leaf(*l))
-            # result_nodes = [create_leaf(*l) for l in local_children_params]
+            # result_nodes = pool.starmap(create_leaf, local_children_params)
+            result_nodes = []
+            for l in local_children_params:
+                result_nodes.append(create_leaf(*l))
+            result_nodes = [create_leaf(*l) for l in local_children_params]
             for child_pos, child in zip(local_tasks, result_nodes):
                 node.children[child_pos] = child
 
