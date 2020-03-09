@@ -71,11 +71,12 @@ class Node(object):
 
 
 class Sum(Node):
-    def __init__(self, weights=None, children=None):
+    def __init__(self, weights=None, children=None, rule=None):
         Node.__init__(self)
         if weights is None:
             weights = []
         self.weights = weights
+        self.rule = rule
 
         if children is None:
             children = []
@@ -89,11 +90,12 @@ class Sum(Node):
 
 
 class Product(Node):
-    def __init__(self, children=None):
+    def __init__(self, children=None, rule=None):
         Node.__init__(self)
         if children is None:
             children = []
         self.children = children
+        self.rule = rule
 
     @property
     def parameters(self):
@@ -157,6 +159,135 @@ class Context:
         self.domains = np.asanyarray(domain)
 
         return self
+
+class Condition(tuple):
+    '''
+    immutable tuple
+    :param var variable name
+    :param op np function of comparison
+    :param threshold value used as second argument of op: IF op( x_var, threshhold ) THEN true
+    '''
+    from operator import itemgetter
+    __slots__ = []
+
+    def __new__(cls, var, op, threshold):
+        return tuple.__new__(cls, (var, op, threshold))
+
+    def __getnewargs__(self): # needed for pickling the class
+        return self.var, self.op, self.threshold
+
+    var = property(itemgetter(0))
+    op = property(itemgetter(1))
+    threshold = property(itemgetter(2))
+
+    def apply(self, x):
+        return self.op(x, self.threshold)
+
+    def _merge_conditions(self, other, ):
+        if self.var == other.var and self.op == other.op:
+            var = self.var
+            op = self.op
+            mergeable = [np.less_equal, np.less, np.greater_equal, np.greater]
+            if self.op in mergeable:
+                take_own_threshold = self.op(self.threshold, other.threshold)
+                if not take_own_threshold:
+                    threshold = other.threshold
+                else:
+                    threshold = self.threshold
+
+            elif self.op == np.equal and self.threshold == other.threshold:
+                threshold = self.threshold #threshold is the same
+            else:
+                # res.threshold = self.threshold
+                # res2 = res.copy()
+                # res2.threshold = other.threshold
+                # return [res, res2]
+                return False
+            return var, op, threshold
+        else:
+            return False
+    def __eq__(self, other):
+        if isinstance(other, Condition):
+            if self.var == other.var and self.op == other.op and self.threshold == other.threshold:
+                return True
+        else: return False
+    def __repr__(self):
+        if self.op == np.equal:
+            op = ' = '
+        elif self.op == np.less_equal:
+            op = ' <= '
+        elif self.op == np.less:
+            op = ' < '
+        elif self.op == np.greater:
+            op = '>'
+        elif self.op == np.greater_equal:
+            op = '>='
+        else:
+            op = str(self.op)
+        return str([self.var, str(op), self.threshold])
+    def __str__(self):
+        return self.__repr__()
+    def __hash__(self):
+        return hash(self.__repr__())
+
+
+
+class Rule(tuple):
+    from operator import itemgetter
+    __slots__ = []
+
+    def __new__(cls, conditions=[]):
+        return tuple.__new__(cls, tuple(conditions))
+
+    _conditions = property(itemgetter(0))
+
+    def get_similar_conditions(self, var):
+        res = []
+        for i, c in enumerate(self):
+            if c.var == var:
+                res.append((i, c))
+        return res
+
+    def merge(self, other): #assume other is larger
+        new_R = tuple()
+
+        other_remaining = dict(zip(range(len(other)), other))
+        for c in self:
+            similar = other.get_similar_conditions(c.var)
+            if similar:
+                for i, oc in similar:
+                    # try to merge conditions, otherwise append both
+                    merged = c._merge_conditions(oc)
+                    if merged:
+                        new_R += (Condition(*merged),)
+                        other_remaining.pop(i)
+                        break
+                if not merged:
+                    new_R += (c,)
+            else: # no similar condition
+                new_R += (c,)
+        new_R += tuple(other_remaining.values())
+        return Rule(new_R)
+
+    def apply(self, data):
+        '''assume only AND conjunctions for now'''
+        bool_vecs = []
+        if isinstance(data, dict) or isinstance(data, list):
+            for c in self:
+                bool_vecs.append(c.op(data[c.var], c.threshold))
+        return np.all(bool_vecs)
+
+    # def __repr__(self):
+    #     s = '['
+    #     for c in self:
+    #         s += str(c) + ', '
+    #     return s + ']'
+    # def __str__(self):
+    #     return self.__repr__()
+    # def __len__(self):
+    #     return len(self._conditions)
+
+
 
 
 def get_number_of_edges(node):

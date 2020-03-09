@@ -20,7 +20,7 @@ import numpy as np
 
 from spn.algorithms.TransformStructure import Prune
 from spn.algorithms.Validity import is_valid
-from spn.structure.Base import Product, Sum, assign_ids
+from spn.structure.Base import Product, Sum, assign_ids, Rule
 # import multiprocessing
 # import os
 #
@@ -129,7 +129,7 @@ def learn_structure(
     assert create_leaf is not None
     assert next_operation is not None
 
-    root = Product()
+    root = Product(rule=Rule())
     root.children.append(None)
 
     if initial_scope is None:
@@ -159,8 +159,9 @@ def learn_structure(
 
         logging.debug("OP: {} on slice {} (remaining tasks {})".format(operation, local_data.shape, len(tasks)))
 
-        if operation == Operation.REMOVE_UNINFORMATIVE_FEATURES:
-            node = Product()
+        if operation == Operation.REMOVE_UNINFORMATIVE_FEATURES: # product node
+            rule = parent.rule # propagate rules for RuleClustering, None in case of normal SPN
+            node = Product(rule=rule)
             node.scope.extend(scope)
             parent.children[children_pos] = node
 
@@ -205,10 +206,13 @@ def learn_structure(
 
             continue
 
-        elif operation == Operation.SPLIT_ROWS:
+        elif operation == Operation.SPLIT_ROWS: #sum node
 
             split_start_t = perf_counter()
+
             data_slices = split_rows(local_data, ds_context, scope)
+            if isinstance(data_slices[1], Rule): # then we are using rule_clustering
+                data_slices, new_rule = data_slices[0], data_slices[1]
             split_end_t = perf_counter()
             logging.debug(
                 "\t\tfound {} row clusters (in {:.5f} secs)".format(len(data_slices), split_end_t - split_start_t)
@@ -218,7 +222,10 @@ def learn_structure(
                 tasks.append((local_data, parent, children_pos, scope, True, False))
                 continue
 
-            node = Sum()
+            parent_rule = parent.rule # none incase of normal spflow SPN
+
+            merged = parent_rule.merge(new_rule)
+            node = Sum(rule=merged)
             node.scope.extend(scope)
             parent.children[children_pos] = node
             # assert parent.scope == node.scope
@@ -246,7 +253,7 @@ def learn_structure(
                 assert data_slices[0][1] == scope
                 continue
 
-            node = Product()
+            node = Product(rule=parent.rule)
             node.scope.extend(scope)
             parent.children[children_pos] = node
 
@@ -259,7 +266,7 @@ def learn_structure(
             continue
 
         elif operation == Operation.NAIVE_FACTORIZATION:
-            node = Product()
+            node = Product(rule=parent.rule)
             node.scope.extend(scope)
             parent.children[children_pos] = node
 
