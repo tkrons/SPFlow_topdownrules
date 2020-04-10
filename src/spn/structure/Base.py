@@ -7,6 +7,7 @@ import numpy as np
 import collections
 from collections import deque, OrderedDict
 import logging
+from pandas.core.generic import NDFrame
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +104,9 @@ class Product(Node):
 
 
 class Leaf(Node):
-    def __init__(self, scope=None):
+    def __init__(self, scope=None, rule=None):
         Node.__init__(self)
+        self.rule = rule
         if scope is not None:
             if type(scope) == int:
                 self.scope.append(scope)
@@ -187,6 +189,11 @@ class Condition(tuple):
         if self.var == other.var and self.op == other.op:
             var = self.var
             op = self.op
+            if op == np.equal:
+                if self.threshold != other.threshold:
+                    raise ValueError('would result in impossible rule')
+                else: # self.threshold == other.threshold
+                    return var, op, self.threshold
             mergeable = [np.less_equal, np.less, np.greater_equal, np.greater]
             if self.op in mergeable:
                 take_own_threshold = self.op(self.threshold, other.threshold)
@@ -206,6 +213,11 @@ class Condition(tuple):
             return var, op, threshold
         else:
             return False
+
+    def get_similar_conditions(self, var):
+        if self.var == var:
+            return [self]
+
     def __eq__(self, other):
         if isinstance(other, Condition):
             if self.var == other.var and self.op == other.op and self.threshold == other.threshold:
@@ -236,10 +248,11 @@ class Rule(tuple):
     from operator import itemgetter
     __slots__ = []
 
-    def __new__(cls, conditions=[]):
+    def __new__(cls, conditions=[],):
         return tuple.__new__(cls, tuple(conditions))
 
-    _conditions = property(itemgetter(0))
+
+    # _conditions = property(itemgetter(0))
 
     def get_similar_conditions(self, var):
         res = []
@@ -248,35 +261,78 @@ class Rule(tuple):
                 res.append((i, c))
         return res
 
-    def merge(self, other): #assume other is larger
+    def merge(self, other):
         new_R = tuple()
-
-        other_remaining = dict(zip(range(len(other)), other))
-        for c in self:
-            similar = other.get_similar_conditions(c.var)
-            if similar:
-                for i, oc in similar:
-                    # try to merge conditions, otherwise append both
-                    merged = c._merge_conditions(oc)
-                    if merged:
-                        new_R += (Condition(*merged),)
-                        other_remaining.pop(i)
-                        break
-                if not merged:
+        if isinstance(other, Rule):
+            other_remaining = dict(zip(range(len(other)), other))
+            for c in self:
+                similar = other.get_similar_conditions(c.var)
+                if similar:
+                    for i, oc in similar:
+                        # try to merge conditions, otherwise append both
+                        try:
+                            merged = c._merge_conditions(oc)
+                        except ValueError:
+                            merged = c
+                        if merged:
+                            new_R += (Condition(*merged),)
+                            other_remaining.pop(i)
+                            break
+                    if not merged:
+                        new_R += (c,)
+                else: # no similar condition
                     new_R += (c,)
-            else: # no similar condition
-                new_R += (c,)
-        new_R += tuple(other_remaining.values())
-        return Rule(new_R)
+            new_R += tuple(other_remaining.values())
+            return Rule(new_R)
+        elif isinstance(other, Condition):
+            new_c = list(self)
+            similar = self.get_similar_conditions(other.var)
+            if similar:
+                assert len(similar) == 1
+                i, similar = similar[0]
+                try:
+                    merged = similar._merge_conditions(other)
+                except ValueError:
+                    merged = similar
+                new_c.pop(i)
+                new_c.append(merged)
+            else:
+                new_c.append(other)
+            return Rule(new_c)
+        else:
+            raise ValueError(other)
 
-    def apply(self, data):
+
+
+
+    def apply(self, data, head=None):
         '''assume only AND conjunctions for now'''
         bool_vecs = []
-        if isinstance(data, dict) or isinstance(data, list):
+        if isinstance(data, dict) or isinstance(data, list) or isinstance(data, NDFrame):
             for c in self:
                 bool_vecs.append(c.op(data[c.var], c.threshold))
-        return np.all(bool_vecs)
+        results = np.all(bool_vecs, axis=0)
+        # if head:
+        #     results[results==True] = head
+        #     results[results==False] = np.NaN
+        return results
 
+
+
+
+    def __eq__(self, other):
+        if isinstance(other, Rule):
+            union = set(self).union(set(other))
+            if len(union) == len(self) and len(union) == len(other):
+                return True
+        else:
+            return False
+
+    def __hash__(self):
+        return hash(frozenset(self))
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
     # def __repr__(self):
     #     s = '['
     #     for c in self:

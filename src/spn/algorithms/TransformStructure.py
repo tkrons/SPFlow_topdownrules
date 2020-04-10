@@ -61,7 +61,8 @@ def Prune(node, contract_single_parents=True):
                 if is_sum:
                     w = n.weights[i]
                     del n.weights[i]
-
+                    # #merge rules
+                    n.rule = n.rule.merge(c.rule)
                     n.weights.extend([cw * w for cw in c.weights])
                 continue
 

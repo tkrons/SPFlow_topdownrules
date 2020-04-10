@@ -42,7 +42,8 @@ def learn_classifier(data, ds_context, spn_learn_wrapper, label_idx, **kwargs):
 
 
 def get_splitting_functions(cols, rows, ohe, threshold, rand_gen, n_jobs):
-    from spn.algorithms.splitting.Clustering import get_split_rows_KMeans, get_split_rows_TSNE, get_split_rows_GMM, get_split_rows_RuleClustering
+    from spn.algorithms.splitting.Clustering import get_split_rows_KMeans, get_split_rows_TSNE, get_split_rows_GMM, \
+        get_split_rows_RuleClustering, get_split_rows_KM_RuleClustering
     from spn.algorithms.splitting.PoissonStabilityTest import get_split_cols_poisson_py
     from spn.algorithms.splitting.RDC import get_split_cols_RDC_py, get_split_rows_RDC_py
 
@@ -65,8 +66,10 @@ def get_splitting_functions(cols, rows, ohe, threshold, rand_gen, n_jobs):
             split_rows = get_split_rows_TSNE()
         elif rows == "gmm":
             split_rows = get_split_rows_GMM()
-        elif rows == "rule_clustering":
-            split_rows =  get_split_rows_RuleClustering()
+        elif rows == "km_rule_clustering":
+            split_rows =  get_split_rows_KM_RuleClustering('tree')
+        elif rows == 'rule_clustering':
+            split_rows = get_split_rows_RuleClustering()
         else:
             raise AssertionError("unknown rows splitting strategy type %s" % str(rows))
     else:
