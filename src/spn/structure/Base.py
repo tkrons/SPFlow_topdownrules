@@ -78,6 +78,7 @@ class Sum(Node):
             weights = []
         self.weights = weights
         self.rule = rule
+        self.children_rules = {}
 
         if children is None:
             children = []
@@ -97,6 +98,7 @@ class Product(Node):
             children = []
         self.children = children
         self.rule = rule
+        self.children_rules = {}
 
     @property
     def parameters(self):
@@ -185,15 +187,16 @@ class Condition(tuple):
     def apply(self, x):
         return self.op(x, self.threshold)
 
-    def _merge_conditions(self, other, ):
+    def _merge_conditions(self, other, domains = None):
+        var = self.var
+        op = self.op
         if self.var == other.var and self.op == other.op:
-            var = self.var
-            op = self.op
             if op == np.equal:
                 if self.threshold != other.threshold:
                     raise ValueError('would result in impossible rule')
                 else: # self.threshold == other.threshold
                     return var, op, self.threshold
+
             mergeable = [np.less_equal, np.less, np.greater_equal, np.greater]
             if self.op in mergeable:
                 take_own_threshold = self.op(self.threshold, other.threshold)
@@ -211,6 +214,22 @@ class Condition(tuple):
                 # return [res, res2]
                 return False
             return var, op, threshold
+        elif op == np.not_equal and other.op == np.not_equal:
+            if len(domains[var]) == 2:
+                if self.threshold != other.threshold:
+                    raise ValueError('would be impossible')
+            elif self.threshold == other.threshold:
+                return var, op, self.threshold
+            else:
+                return False #keep both
+        elif (op == np.not_equal and other.op == np.equal) or (op == np.equal and other.op == np.not_equal):
+            if len(domains[var]) == 2:
+                if self.threshold == other.threshold:
+                    raise ValueError('would result in impossible rule')
+                else:  # rules are identical x==0 equals x!=1
+                    threshold = (op == np.not_equal) ^ self.threshold #XOR
+                    return var, np.equal, threshold
+
         else:
             return False
 
@@ -225,15 +244,17 @@ class Condition(tuple):
         else: return False
     def __repr__(self):
         if self.op == np.equal:
-            op = ' = '
+            op = '='
         elif self.op == np.less_equal:
-            op = ' <= '
+            op = '<='
         elif self.op == np.less:
-            op = ' < '
+            op = '<'
         elif self.op == np.greater:
             op = '>'
         elif self.op == np.greater_equal:
             op = '>='
+        elif self.op == np.not_equal:
+            op = '!='
         else:
             op = str(self.op)
         return str([self.var, str(op), self.threshold])
@@ -249,7 +270,15 @@ class Rule(tuple):
     __slots__ = []
 
     def __new__(cls, conditions=[],):
-        return tuple.__new__(cls, tuple(conditions))
+        if isinstance(conditions, Condition):
+            return tuple.__new__(cls, tuple([conditions])) # tuple constructor doesnt want to do: ((element)) instead (element)
+        elif len(conditions) == 0:
+            return tuple.__new__(cls, tuple(conditions))
+        elif isinstance(conditions[0], Condition):
+            assert len(set(conditions)) == len(conditions)
+            return tuple.__new__(cls, tuple(conditions))
+        else:
+            raise ValueError('Invalid conditions:' + str(conditions))
 
 
     # _conditions = property(itemgetter(0))
@@ -261,25 +290,36 @@ class Rule(tuple):
                 res.append((i, c))
         return res
 
-    def merge(self, other):
+    def negate(self):
+        conds = []
+        # opposite = {np.equal: np.not_equal, np.not_equal: np.equal,
+        #             np.greater: np.less_equal, np.greater_equal: np.less,
+        #             np.less: np.greater_equal, np.less_equal: np.greater}
+        for c in self:
+            conds.append(Condition(c.var, c.op, 1 - c.threshold))
+        return Rule(conds)
+
+    def merge(self, other, ds_context=None):
         new_R = tuple()
         if isinstance(other, Rule):
             other_remaining = dict(zip(range(len(other)), other))
             for c in self:
-                similar = other.get_similar_conditions(c.var)
-                if similar:
-                    for i, oc in similar:
+                # similar = other.get_similar_conditions(c.var)
+                # if similar:
+                    # for i, oc in similar:
+                for i, oc in enumerate(other):
+                    if c == oc: # dont merge
+                        other_remaining.pop(i)
+                    elif c.var == oc.var:
                         # try to merge conditions, otherwise append both
                         try:
-                            merged = c._merge_conditions(oc)
+                            merged = c._merge_conditions(oc, domains=ds_context.domains)
                         except ValueError:
                             merged = c
                         if merged:
                             new_R += (Condition(*merged),)
                             other_remaining.pop(i)
                             break
-                    if not merged:
-                        new_R += (c,)
                 else: # no similar condition
                     new_R += (c,)
             new_R += tuple(other_remaining.values())
@@ -305,12 +345,26 @@ class Rule(tuple):
 
 
 
-    def apply(self, data, head=None):
+    def apply(self, data, head=None, value_dict=None):
         '''assume only AND conjunctions for now'''
         bool_vecs = []
         if isinstance(data, dict) or isinstance(data, list) or isinstance(data, NDFrame):
-            for c in self:
-                bool_vecs.append(c.op(data[c.var], c.threshold))
+            if head:
+                all_conditions = list(self) + [head]
+            else:
+                all_conditions = self
+            for c in all_conditions:
+                if isinstance(c.threshold, str):
+                    assert value_dict
+                    varindex = list(data.columns).index(c.var)
+                    var_attributes = value_dict[varindex][2]
+                    for k,v in var_attributes.items():
+                        if v == c.threshold:
+                            threshold = k
+                            break
+                else:
+                    threshold = c.threshold
+                bool_vecs.append(c.op(data[c.var], threshold))
         results = np.all(bool_vecs, axis=0)
         # if head:
         #     results[results==True] = head

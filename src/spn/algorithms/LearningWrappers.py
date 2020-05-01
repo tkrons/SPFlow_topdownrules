@@ -67,7 +67,7 @@ def get_splitting_functions(cols, rows, ohe, threshold, rand_gen, n_jobs):
         elif rows == "gmm":
             split_rows = get_split_rows_GMM()
         elif rows == "km_rule_clustering":
-            split_rows =  get_split_rows_KM_RuleClustering('tree')
+            split_rows =  get_split_rows_KM_RuleClustering('stump')
         elif rows == 'rule_clustering':
             split_rows = get_split_rows_RuleClustering()
         else:

@@ -34,7 +34,7 @@ def Compress(node):
     return node
 
 
-def Prune(node, contract_single_parents=True):
+def Prune(node, contract_single_parents=True, ds_context=None):
     v, err = is_valid(node)
     assert v, err
     nodes = get_nodes_by_type(node, (Product, Sum))
@@ -62,7 +62,7 @@ def Prune(node, contract_single_parents=True):
                     w = n.weights[i]
                     del n.weights[i]
                     # #merge rules
-                    n.rule = n.rule.merge(c.rule)
+                    # n.rule = n.rule.merge(c.rule, ds_context)
                     n.weights.extend([cw * w for cw in c.weights])
                 continue
 
