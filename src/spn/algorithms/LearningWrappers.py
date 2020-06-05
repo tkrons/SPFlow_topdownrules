@@ -69,7 +69,7 @@ def get_splitting_functions(cols, rows, ohe, threshold, rand_gen, n_jobs):
         elif rows == "km_rule_clustering":
             split_rows =  get_split_rows_KM_RuleClustering('stump')
         elif rows == 'rule_clustering':
-            split_rows = get_split_rows_RuleClustering()
+            split_rows = get_split_rows_RuleClustering('stump')
         else:
             raise AssertionError("unknown rows splitting strategy type %s" % str(rows))
     else:
@@ -147,7 +147,7 @@ def learn_parametric(
     data,
     ds_context,
     cols="rdc",
-    rows="kmeans", # todo implement 'rule_clustering'
+    rows="kmeans",
     min_instances_slice=200,
     min_features_slice=1,
     multivariate_leaf=False,

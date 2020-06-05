@@ -345,10 +345,12 @@ class Rule(tuple):
 
 
 
-    def apply(self, data, head=None, value_dict=None):
+    def apply(self, data, head=None, value_dict=None, scope_partial_data = None):
         '''assume only AND conjunctions for now'''
         bool_vecs = []
-        if isinstance(data, dict) or isinstance(data, list) or isinstance(data, NDFrame):
+        if True: #isinstance(data, dict) or isinstance(data, list) or isinstance(data, NDFrame):
+            if isinstance(data, np.ndarray) and len(data.shape) == 2:
+                data = data.T
             if head:
                 all_conditions = list(self) + [head]
             else:
@@ -364,7 +366,13 @@ class Rule(tuple):
                             break
                 else:
                     threshold = c.threshold
-                bool_vecs.append(c.op(data[c.var], threshold))
+                if scope_partial_data:
+                    partialidx = scope_partial_data.index(c.var)
+                    bool_vecs.append(c.op(data[partialidx], threshold))
+                else:
+                    bool_vecs.append(c.op(data[c.var], threshold))
+        else:
+            raise ValueError()
         results = np.all(bool_vecs, axis=0)
         # if head:
         #     results[results==True] = head

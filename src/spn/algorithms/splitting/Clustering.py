@@ -68,7 +68,6 @@ def get_split_rows_TSNE(n_clusters=2, pre_proc=None, ohe=False, seed=17, verbose
 
 def get_split_rows_KM_RuleClustering(model, k=2, rand_state=None, debug=None, pre_proc=None, ohe=False,):
     #todo return listof(tuple(data, indices, weight))
-    # todo only works for one-hot-encoding... categorical data (n>2) does not work
     def tree_to_rule(tree, feature_names, ds_context):
         tree_ = tree.tree_
         feature_name = [
@@ -163,17 +162,91 @@ def get_split_rows_KM_RuleClustering(model, k=2, rand_state=None, debug=None, pr
     return split_rows_RuleClustering
 
 def get_split_rows_RuleClustering(model, k=2, rand_state=None, debug=None, pre_proc=None, ohe=False,):
-    def split_rows_RuleClustering(local_data, ds_context, scope):
+    '''
+    todo: use the rule to separate the cluster.
+    1: Kmeans k=2
+    2: Rule from tree
+    3: return clusters according to rule
+
+    :param model:
+    :param k:
+    :param rand_state:
+    :param debug:
+    :param pre_proc:
+    :param ohe:
+    :return:
+    '''
+    def tree_to_rule(tree, feature_names, ds_context):
+        tree_ = tree.tree_
+        feature_name = [
+            feature_names[i] if i != _tree.TREE_UNDEFINED else 'undefined'
+            for i in tree_.feature
+        ]
+
+        def recurse(node, depth, rule=[]):
+            if tree_.feature[node] != _tree.TREE_UNDEFINED:
+                feature = feature_name[node]
+
+                threshold = tree_.threshold[node]
+                # left <= threshhold < right
+                child_l, child_r = tree_.children_left[node], tree_.children_right[node]
+                impure_l, impure_r = tree_.impurity[child_l], tree_.impurity[child_r]
+                if ds_context.parametric_types[feature] == Categorical:
+                    if impure_l < impure_r:  # go left
+                        # assuming binary!
+                        rule.append(Condition(feature, np.equal, int(np.floor(threshold))))
+                        return recurse(child_l, depth + 1, rule)
+                    else:  # go right
+                        rule.append(Condition(feature, np.equal, int(np.ceil(threshold))))
+                        return recurse(child_r, depth + 1, rule)
+                else:
+                    if impure_l < impure_r:  # go left
+                        rule.append(Condition(feature, np.less_equal, threshold))
+                        return recurse(child_l, depth + 1, rule)
+                    else:  # go right
+                        rule.append(Condition(feature, np.greater, threshold))
+                        return recurse(child_r, depth + 1, rule)
+            else:
+                return rule
+
+        return Rule(recurse(0, 1, ))
+
+    def split_rows_RuleClustering(local_data, ds_context, scope, ):
         data = preproc(local_data, ds_context, pre_proc, ohe)
 
-        # clusters = KMeans(n_clusters=n_clusters, random_state=seed).fit_predict(data)
+        # https://stackoverflow.com/a/39772170/5595684
+        km = KMeans(k, random_state=rand_state)
+        km_clusters = km.fit_predict(data)
+        lab, count = np.unique(km.labels_, return_counts=True)
+        # inverse weight classes, todo test if this works ok
+        N = len(data)
+        lab_wgt = {lab: (N - count) / N for lab, count in zip(lab, count)}
+        W = [lab_wgt[lab] for lab in km.labels_]
+
         if model == 'stump':
-            # choose dim and cutoff to maximize (some) distance?
-            clusters = 123
+            dtc = DecisionTreeClassifier(random_state=rand_state, max_depth=1, ).fit(data, km.labels_, sample_weight=W)
+            # dtc.cost_complexity_pruning_path()
+            left_rule = tree_to_rule(dtc, scope, ds_context)
+        elif model == 'tree':
+            dtc = DecisionTreeClassifier(
+                random_state=rand_state, max_depth=None, ccp_alpha=0.05, min_impurity_split=0.01
+                # max_leaf_nodes=2*10**(self.k+1)
+            ).fit(data, km.labels_, sample_weight=W
+                  )
+            # dtc.cost_complexity_pruning_path()
+            left_rule = tree_to_rule(dtc, scope, ds_context)
+        elif model == 'm-estimate':
+            raise ValueError('Not implemented')
+        else:
+            raise ValueError(str(model) + ' unknown model type')
 
-        return split_data_by_clusters(local_data, clusters, scope, rows=True)
+        # todo try out rule clusters
+        right_rule = left_rule.negate()
+        rule_clusters = (right_rule.apply(data, scope_partial_data = scope)).astype(int)
+        split = split_data_by_clusters(data, rule_clusters, scope, rows=True)
+        assert len(split) == 2
+        return split, (left_rule, right_rule)
 
-    raise ValueError()
     return split_rows_RuleClustering
 
 def get_split_rows_DBScan(eps=2, min_samples=10, pre_proc=None, ohe=False):
