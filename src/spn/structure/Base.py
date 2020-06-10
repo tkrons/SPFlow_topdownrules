@@ -184,7 +184,14 @@ class Condition(tuple):
     op = property(itemgetter(1))
     threshold = property(itemgetter(2))
 
-    def apply(self, x):
+    def apply(self, x, value_dict = None):
+        if value_dict:
+            if self.var is str:
+                raise NotImplementedError()
+        if not isinstance(x, np.ndarray):
+            x = np.array(x)
+        if x.ndim == 2:
+            x = x[:, self.var]
         return self.op(x, self.threshold)
 
     def _merge_conditions(self, other, domains = None):
@@ -347,6 +354,7 @@ class Rule(tuple):
 
     def apply(self, data, head=None, value_dict=None, scope_partial_data = None):
         '''assume only AND conjunctions for now'''
+        data = np.array(data)
         bool_vecs = []
         if True: #isinstance(data, dict) or isinstance(data, list) or isinstance(data, NDFrame):
             if isinstance(data, np.ndarray) and len(data.shape) == 2:
